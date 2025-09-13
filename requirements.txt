@@ -1,8 +1,7 @@
 streamlit
 streamlit-webrtc
-mediapipe
 opencv-python-headless
+mediapipe
+numpy
 scikit-learn
 joblib
-numpy
-Pillow
