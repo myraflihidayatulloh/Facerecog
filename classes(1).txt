@@ -1,0 +1,5 @@
+EkspresiDatar
+EkspresiKaget
+EkspresiMarah
+EkspresiSedih
+EkspresiSenang
