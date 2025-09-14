@@ -6,17 +6,18 @@ import av
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 from streamlit_autorefresh import st_autorefresh
+
 # === CONFIG ===
 MODEL_PATH = "model(1).pkl"
 CLASSES_TXT = "classes(1).txt"
 
 # Landmark subset (sama dengan training)
 RIGHT_EYE = list(range(33, 133))
-LEFT_EYE  = list(range(362, 463))
+LEFT_EYE = list(range(362, 463))
 IRIS_RIGHT = [468, 469, 470, 471]
-IRIS_LEFT  = [472, 473, 474, 475]
+IRIS_LEFT = [472, 473, 474, 475]
 RIGHT_EYEBROW = [70, 63, 105, 66, 107, 55, 193, 122, 46, 53]
-LEFT_EYEBROW  = [336, 296, 334, 293, 300, 276, 283, 352, 276, 282]
+LEFT_EYEBROW = [336, 296, 334, 293, 300, 276, 283, 352, 276, 282]
 MOUTH_OUTER = list(range(61, 81)) + list(range(308, 329))
 MOUTH_INNER = list(range(81, 91)) + list(range(311, 321))
 NOSE = [1, 2, 98, 327, 97, 326, 168, 195, 5, 4, 19, 94, 141, 208, 49, 279]
@@ -43,19 +44,8 @@ EXPLANATIONS = {
     "senang": "Ekspresi senang menandakan kebahagiaan, kepuasan, dan suasana hati positif."
 }
 
-# === MediaPipe FaceMesh ===
-mp_face = mp.solutions.face_mesh
-face_mesh = mp_face.FaceMesh(
-    static_image_mode=False,
-    max_num_faces=1,
-    refine_landmarks=True,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
-)
-
 # === Streamlit UI ===
 st.set_page_config(page_title="Realtime Emotion Recognition", layout="wide")
-
 st.title("😊 Realtime Emotion Recognition untuk Bimbingan Konseling")
 st.markdown(
     """
@@ -71,11 +61,18 @@ st.markdown(
 class EmotionProcessor(VideoProcessorBase):
     def __init__(self):
         self.label = "Menunggu wajah..."
+        self.face_mesh = mp.solutions.face_mesh.FaceMesh(
+            static_image_mode=False,
+            max_num_faces=1,
+            refine_landmarks=True,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        results = face_mesh.process(rgb)
+        results = self.face_mesh.process(rgb)
 
         if results.multi_face_landmarks:
             lm = results.multi_face_landmarks[0].landmark
@@ -108,12 +105,13 @@ class EmotionProcessor(VideoProcessorBase):
         else:
             self.label = "Wajah tidak terdeteksi"
 
-        # Simpan ke session_state agar bisa dibaca sidebar
         st.session_state["current_label"] = self.label
-
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
+    def __del__(self):
+        self.face_mesh.close()
 
+# === RTC Configuration ===
 RTC_CONFIGURATION = {
     "iceServers": [
         {"urls": ["stun:stun.l.google.com:19302"]},
@@ -124,14 +122,17 @@ RTC_CONFIGURATION = {
         }
     ]
 }
+
+# === Start Webcam ===
 ctx = webrtc_streamer(
     key="emotion",
     mode=WebRtcMode.SENDRECV,
-    rtc_configuration=RTC_CONFIGURATION,  
+    rtc_configuration=RTC_CONFIGURATION,
     video_processor_factory=EmotionProcessor,
     media_stream_constraints={"video": True, "audio": False},
 )
-# === Sidebar Info (auto-refresh + penjelasan) ===
+
+# === Sidebar Info ===
 st.sidebar.header("📘 Penjelasan Ekspresi")
 st_autorefresh(interval=900, key="refresh_sidebar")
 
@@ -139,13 +140,10 @@ if ctx and ctx.video_processor:
     raw_label = ctx.video_processor.label
     st.sidebar.subheader(f"Ekspresi Terdeteksi: **{raw_label}**")
 
-    # Normalisasi label
     norm_label = raw_label.lower().replace("ekspresi", "").strip()
-
     if norm_label in EXPLANATIONS:
         st.sidebar.write(EXPLANATIONS[norm_label])
     else:
         st.sidebar.write("Ekspresi tidak dikenali.")
 else:
     st.sidebar.write("Menunggu wajah...")
-
