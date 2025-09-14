@@ -111,17 +111,17 @@ class EmotionProcessor(VideoProcessorBase):
     def __del__(self):
         self.face_mesh.close()
 
-# === RTC Configuration ===
 RTC_CONFIGURATION = {
     "iceServers": [
         {"urls": ["stun:stun.l.google.com:19302"]},
         {
-            "urls": ["turn:relay1.expressturn.com:3478"],
-            "username": "efree",
-            "credential": "efreepass"
+            "urls": "turn:openrelay.metered.ca:80",
+            "username": "openrelayproject",
+            "credential": "openrelayproject"
         }
     ]
 }
+
 
 # === Start Webcam ===
 ctx = webrtc_streamer(
