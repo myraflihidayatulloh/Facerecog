@@ -1,20 +1,16 @@
-# app.py
 import cv2
 import numpy as np
 import mediapipe as mp
 import joblib
 import av
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
-
-# === Load model & classes ===
+import streamlit as st
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
+from streamlit_autorefresh import st_autorefresh
+# === CONFIG ===
 MODEL_PATH = "model(1).pkl"
 CLASSES_TXT = "classes(1).txt"
 
-model = joblib.load(MODEL_PATH)
-with open(CLASSES_TXT, "r") as f:
-    classes = [l.strip() for l in f]
-
-# Landmark subset (harus sama dengan training)
+# Landmark subset (sama dengan training)
 RIGHT_EYE = list(range(33, 133))
 LEFT_EYE  = list(range(362, 463))
 IRIS_RIGHT = [468, 469, 470, 471]
@@ -33,6 +29,21 @@ IMPORTANT_LANDMARKS = list(set(
     NOSE + JAWLINE
 ))
 
+# === Load Model & Classes ===
+model = joblib.load(MODEL_PATH)
+with open(CLASSES_TXT, "r") as f:
+    classes = [l.strip() for l in f]
+
+# === Penjelasan Ekspresi ===
+EXPLANATIONS = {
+    "datar": "Ekspresi datar menandakan kondisi netral atau tanpa emosi dominan.",
+    "kaget": "Ekspresi kaget muncul saat menghadapi sesuatu yang tiba-tiba atau tak terduga.",
+    "marah": "Ekspresi marah biasanya terkait dengan perasaan terganggu, frustrasi, atau tidak setuju.",
+    "sedih": "Ekspresi sedih mengindikasikan perasaan kehilangan, kecewa, atau terluka.",
+    "senang": "Ekspresi senang menandakan kebahagiaan, kepuasan, dan suasana hati positif."
+}
+
+# === MediaPipe FaceMesh ===
 mp_face = mp.solutions.face_mesh
 face_mesh = mp_face.FaceMesh(
     static_image_mode=False,
@@ -42,18 +53,33 @@ face_mesh = mp_face.FaceMesh(
     min_tracking_confidence=0.5
 )
 
+# === Streamlit UI ===
+st.set_page_config(page_title="Realtime Emotion Recognition", layout="wide")
 
-# === Video Transformer untuk Streamlit-WebRTC ===
-class FaceLandmarkTransformer(VideoTransformerBase):
-    def transform(self, frame: av.VideoFrame) -> np.ndarray:
+st.title("😊 Realtime Emotion Recognition untuk Bimbingan Konseling")
+st.markdown(
+    """
+    Sistem ini mendeteksi **ekspresi wajah** secara realtime melalui webcam.
+    <br>Deteksi ekspresi yang tersedia: **Datar, Kaget, Marah, Sedih, Senang**.
+    <br><br>
+    **Tujuan:** Membantu konselor memahami kondisi emosional siswa/klien secara objektif.
+    """,
+    unsafe_allow_html=True
+)
+
+# === Video Processor ===
+class EmotionProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.label = "Menunggu wajah..."
+
+    def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         results = face_mesh.process(rgb)
 
         if results.multi_face_landmarks:
             lm = results.multi_face_landmarks[0].landmark
-            coords = np.array([[lm[i].x, lm[i].y] for i in IMPORTANT_LANDMARKS],
-                              dtype=np.float32).flatten()
+            coords = np.array([[lm[i].x, lm[i].y] for i in IMPORTANT_LANDMARKS], dtype=np.float32).flatten()
 
             xs = coords[0::2]; ys = coords[1::2]
             minx, maxx = xs.min(), xs.max()
@@ -67,31 +93,51 @@ class FaceLandmarkTransformer(VideoTransformerBase):
                 normalized[0::2] = xs_n
                 normalized[1::2] = ys_n
 
-                # Prediksi kelas
                 pred = model.predict([normalized])[0]
-                label = classes[pred]
+                self.label = classes[pred]
 
-                # Tampilkan label di atas frame
-                cv2.putText(img, label, (30, 50), cv2.FONT_HERSHEY_SIMPLEX,
-                            1.2, (0, 255, 0), 3)
+                cv2.putText(img, f"Ekspresi: {self.label}", (30, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
 
-                # Gambar landmark subset
+                # Gambar landmark
                 h_img, w_img, _ = img.shape
                 for i in IMPORTANT_LANDMARKS:
                     x = int(lm[i].x * w_img)
                     y = int(lm[i].y * h_img)
                     cv2.circle(img, (x, y), 1, (0, 255, 255), -1)
+        else:
+            self.label = "Wajah tidak terdeteksi"
 
-        return img
+        # Simpan ke session_state agar bisa dibaca sidebar
+        st.session_state["current_label"] = self.label
+
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-# === Streamlit UI ===
-import streamlit as st
-st.title("📷 Realtime Face Landmark Classification")
-st.write("Webcam streaming dengan prediksi kelas wajah realtime.")
-
-webrtc_streamer(
-    key="face-landmark",
-    video_transformer_factory=FaceLandmarkTransformer,
-    media_stream_constraints={"video": True, "audio": False}
+# === Start Webcam ===
+ctx = webrtc_streamer(
+    key="emotion",
+    mode=WebRtcMode.SENDRECV,
+    rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+    video_processor_factory=EmotionProcessor,
+    media_stream_constraints={"video": True, "audio": False},
 )
+
+# === Sidebar Info (auto-refresh + penjelasan) ===
+st.sidebar.header("📘 Penjelasan Ekspresi")
+st_autorefresh(interval=900, key="refresh_sidebar")
+
+if ctx and ctx.video_processor:
+    raw_label = ctx.video_processor.label
+    st.sidebar.subheader(f"Ekspresi Terdeteksi: **{raw_label}**")
+
+    # Normalisasi label
+    norm_label = raw_label.lower().replace("ekspresi", "").strip()
+
+    if norm_label in EXPLANATIONS:
+        st.sidebar.write(EXPLANATIONS[norm_label])
+    else:
+        st.sidebar.write("Ekspresi tidak dikenali.")
+else:
+    st.sidebar.write("Menunggu wajah...")
+
