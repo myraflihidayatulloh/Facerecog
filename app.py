@@ -5,7 +5,6 @@ import joblib
 import av
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
-from aiortc import RTCConfiguration
 from streamlit_autorefresh import st_autorefresh
 # === CONFIG ===
 MODEL_PATH = "model(1).pkl"
@@ -115,26 +114,23 @@ class EmotionProcessor(VideoProcessorBase):
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-RTC_CONFIGURATION = RTCConfiguration({
+RTC_CONFIGURATION = {
     "iceServers": [
-        {"urls": ["stun:stun.l.google.com:19302"]},  # STUN Google
+        {"urls": ["stun:stun.l.google.com:19302"]},
         {
-            "urls": ["turn:relay1.expressturn.com:3478"],  # TURN server
+            "urls": ["turn:relay1.expressturn.com:3478"],
             "username": "efree",
             "credential": "efreepass"
         }
     ]
-})
-
+}
 ctx = webrtc_streamer(
     key="emotion",
     mode=WebRtcMode.SENDRECV,
-    rtc_configuration=RTC_CONFIGURATION,
+    rtc_configuration=RTC_CONFIGURATION,  
     video_processor_factory=EmotionProcessor,
     media_stream_constraints={"video": True, "audio": False},
 )
-
-
 # === Sidebar Info (auto-refresh + penjelasan) ===
 st.sidebar.header("📘 Penjelasan Ekspresi")
 st_autorefresh(interval=900, key="refresh_sidebar")
