@@ -4,7 +4,8 @@ import mediapipe as mp
 import joblib
 import av
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
+from aiortc import RTCConfiguration
 from streamlit_autorefresh import st_autorefresh
 # === CONFIG ===
 MODEL_PATH = "model(1).pkl"
