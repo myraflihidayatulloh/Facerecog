@@ -4,7 +4,7 @@ import mediapipe as mp
 import joblib
 import av
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
 from streamlit_autorefresh import st_autorefresh
 # === CONFIG ===
 MODEL_PATH = "model(1).pkl"
@@ -114,14 +114,25 @@ class EmotionProcessor(VideoProcessorBase):
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-# === Start Webcam ===
+RTC_CONFIGURATION = RTCConfiguration({
+    "iceServers": [
+        {"urls": ["stun:stun.l.google.com:19302"]},  # STUN Google
+        {
+            "urls": ["turn:relay1.expressturn.com:3478"],  # TURN server
+            "username": "efree",
+            "credential": "efreepass"
+        }
+    ]
+})
+
 ctx = webrtc_streamer(
     key="emotion",
     mode=WebRtcMode.SENDRECV,
-    rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+    rtc_configuration=RTC_CONFIGURATION,
     video_processor_factory=EmotionProcessor,
     media_stream_constraints={"video": True, "audio": False},
 )
+
 
 # === Sidebar Info (auto-refresh + penjelasan) ===
 st.sidebar.header("📘 Penjelasan Ekspresi")
